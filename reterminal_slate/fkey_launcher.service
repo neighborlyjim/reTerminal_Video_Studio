@@ -1,0 +1,14 @@
+[Unit]
+Description=F-key launcher for reTerminal Podcast Slate
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /home/jharris/reTerminal_Video_Studio/reterminal_slate/fkey_launcher_python.py
+Restart=always
+User=root
+Environment="DISPLAY=:0"
+Environment="XAUTHORITY=/home/jharris/.Xauthority"
+
+[Install]
+WantedBy=default.target

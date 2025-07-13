@@ -1,0 +1,153 @@
+Here’s a clear “build brief” you can copy-paste to the VS Code agent (or teammate) who’s already hacking on the reTerminal demo.
+It tells them exactly what to add, which libraries to import, and how to merge the new slate features (MARK, TIMER, REC, PREVIEW, sync-blip) with the touchscreen UI they already have.
+0 · Environment prerequisites
+
+# Run once on the reTerminal CM4
+sudo apt update
+sudo apt install -y python3-pip sox alsa-utils gstreamer1.0-tools \
+                    python3-gpiozero python3-rtmidi
+pip3 install mido requests
+
+SoX plays the sync beeps, GStreamer shows the RTSP preview, mido handles USB-MIDI.
+1 · Project layout you should create
+
+reterminal_slate/
+├─ main.py            # Tk touchscreen app (merge with existing demo)
+├─ markers.py         # MIDI + beep helpers
+├─ zcam_api.py        # start/stop, status poll
+├─ preview.py         # RTSP preview spawn/kill
+└─ assets/            # (optional) PNG icons, sounds
+
+2 · Core modules (short snippets)
+markers.py
+
+import mido, subprocess
+
+RC_PORT = 'RODECaster Pro MIDI 1'   # enumerate once on boot
+out = mido.open_output(RC_PORT)
+
+def purple_mark():    _send(60, 1000)   # NOTE 60, 1 kHz beep
+def blue_mark():      _send(62,  800)
+
+def _send(note, freq):
+    out.send(mido.Message('note_on', note=note, velocity=127))
+    subprocess.Popen(
+        ['play','-nq','-t','alsa','synth','0.05','sine',str(freq)],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+zcam_api.py
+
+import requests
+CAM_IP = "192.168.8.1"
+
+def rec_toggle(on):
+    cmd = "start" if on else "stop"
+    try:
+        requests.get(
+            f"http://{CAM_IP}/cgi-bin/zcmd?cmd=record&value={cmd}",
+            timeout=1)
+        return True
+    except requests.Timeout:
+        return False
+
+preview.py
+
+import subprocess, os
+RTSP = "rtsp://192.168.8.1/live"
+gst  = None
+
+def toggle():
+    global gst
+    if gst and gst.poll() is None:     # running
+        gst.terminate(); gst = None
+    else:
+        gst = subprocess.Popen(
+            ['gst-launch-1.0','playbin','uri='+RTSP],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            env=dict(os.environ,  DISPLAY=":0"))
+
+3 · main.py – merge with the existing Tk demo
+
+import tkinter as tk, threading, time
+from markers import purple_mark, blue_mark
+from zcam_api import rec_toggle
+import preview
+
+root = tk.Tk(); root.attributes('-fullscreen', True)
+root.configure(bg="#222")
+
+# ── TIMER STATE ───────────────────────────────────────────
+auto_on  = False
+start_ts = None
+def schedule_tick():
+    global start_ts
+    if not auto_on: return
+    blue_mark()
+    root.after(5*60*1000, schedule_tick)     # 5-min loop
+def toggle_timer():
+    global auto_on, start_ts
+    auto_on = not auto_on
+    if auto_on:
+        start_ts = time.time()
+        schedule_tick()
+    else:
+        timer_lbl.config(text="00:00")
+def update_clock():
+    if auto_on and start_ts:
+        dt = int(time.time() - start_ts)
+        mm, ss = divmod(dt, 60)
+        timer_lbl.config(text=f"{mm:02}:{ss:02}")
+    root.after(500, update_clock)
+
+# ── UI  ───────────────────────────────────────────────────
+btn_cfg = dict(width=10, height=3, fg="#fff", font=("Helvetica",28,"bold"))
+mark_btn  = tk.Button(root, text="MARK",    bg="#6a5acd",
+                      command=purple_mark, **btn_cfg)
+timer_btn = tk.Button(root, text="TIMER",   bg="#4682b4",
+                      command=toggle_timer, **btn_cfg)
+rec_state = [False]
+def rec_toggle_cb():
+    rec_state[0] = not rec_state[0]
+    ok = rec_toggle(rec_state[0])
+    if ok: rec_btn.config(bg=("#d04a4a" if rec_state[0] else "#444"))
+rec_btn   = tk.Button(root, text="REC",     bg="#444",
+                      command=rec_toggle_cb, **btn_cfg)
+prev_btn  = tk.Button(root, text="PREVIEW", bg="#009688",
+                      command=preview.toggle, **btn_cfg)
+timer_lbl = tk.Label(root, text="00:00", fg="#00e676",
+                     bg="#222", font=("Helvetica",48,"bold"))
+
+for w in (mark_btn,timer_btn,rec_btn,prev_btn,timer_lbl): w.pack(pady=8)
+update_clock(); root.mainloop()
+
+    Touch “MARK” → purple Rode flag + 1 kHz blip.
+    Touch “TIMER” → first press starts 5-min auto-marks (blue); second press stops.
+    Touch “REC” → Z CAM record start/stop via HTTP.
+    Touch “PREVIEW” → pop up / close RTSP feed in a separate window.
+
+4 · Deploy
+
+sudo tee /etc/systemd/system/reterm-slate.service <<'EOF'
+[Unit]
+Description=reTerminal Podcast Slate
+After=graphical.target
+[Service]
+ExecStart=/usr/bin/python3 /home/pi/reterminal_slate/main.py
+WorkingDirectory=/home/pi/reterminal_slate
+Restart=on-failure
+[Install]
+WantedBy=graphical.target
+EOF
+sudo systemctl enable --now reterm-slate
+
+Talking points for the VS Code agent
+
+    Reuse existing Tk window—just graft the button grid & timers from main.py.
+
+    Stick with Tkinter (already used in their sensor demo), no need for PyQt.
+
+    MIDI stays exactly like the Pi-2 version; USB-C host on reTerminal enumerates as RODECaster Pro MIDI 1.
+
+    Preview: simplest is GStreamer playbin; VLC or OpenCV are OK if they prefer.
+
+Drop that spec in chat, ask them to integrate—it’s 200 lines total and runs out-of-the-box on the reTerminal CM4.
