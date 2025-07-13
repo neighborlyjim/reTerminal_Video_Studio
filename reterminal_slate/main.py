@@ -1,162 +1,213 @@
-import tkinter as tk, threading, time
-from markers import purple_mark, blue_mark, check_midi
-from zcam_api import rec_toggle, check_camera
-import preview
+import tkinter as tk
+from markers import purple_mark, blue_mark, check_midi, midi_status
+from zcam_api import rec_toggle, get_camera_status, get_video_format, get_camera_name, get_temperature, check_wifi_connection, get_storage_gb
+from preview import launch_preview
 from fkey_listener import FKeyListener
+import time
+import threading
+import requests
 
-# --- Constants ---
-BG_COLOR = "#222"
-MARK_IDLE = "#6a5acd"
-MARK_ACTIVE = "#9370db"
-REC_IDLE = "#444"
-REC_ACTIVE = "#d04a4a"
-REC_ERROR = "#ff9100"
-PREV_IDLE = "#009688"
-PREV_ACTIVE = "#00695c"
-TIMER_COLOR = "#00e676"
+# Globals for timer
+recording_start_time = 0
+is_recording = False
+auto_mark_timer = None
+
+# Color and font constants matching wireframe
+CLR_BG        = "#222"
+CLR_TEXT      = "#ffffff"
+CLR_MARK      = "#6a5acd"   # idle
+CLR_REC_IDLE  = "#444444"
+CLR_REC_ARM   = "#d04a4a"
+CLR_PREV      = "#009688"
+CLR_PREV_ON   = "#00695c"
+CLR_COUNTER   = "#00e676"
+
+FNT_BTN  = ("Helvetica", 36, "bold")
+FNT_TIME = ("Roboto Mono", 64, "bold")
+FNT_BAR  = ("Helvetica", 16)
+
+# Button dimensions and positions from wireframe
 BTN_W, BTN_H = 260, 110
-BTN_Y = 260
-BTN_SPACING = 350
-MARK_X = 160
-REC_X = MARK_X + BTN_SPACING
-PREV_X = REC_X + BTN_SPACING
+MARK_X, REC_X, PREV_X, BTN_Y = 160, 510, 860, 260
 
 root = tk.Tk()
-root.attributes('-fullscreen', True)
 root.geometry("1280x720")
-root.configure(bg=BG_COLOR)
-root.focus_force()  # Force focus to make fullscreen work properly
-root.lift()  # Bring window to front
+root.configure(bg=CLR_BG)
+root.attributes("-fullscreen", True)
 
-# Ensure fullscreen after window is created
-def ensure_fullscreen():
-    root.attributes('-fullscreen', True)
-    root.focus_force()
-    root.lift()
+# ── Status bar ──────────────────────────────────────────────────
+status_bar = tk.Label(root, text="Initializing...", 
+                     fg=CLR_TEXT, bg=CLR_BG, font=FNT_BAR, anchor="w")
+status_bar.place(x=10, y=5, width=1260, height=30)
 
-root.after(100, ensure_fullscreen)  # Apply fullscreen after 100ms
-
-# --- State ---
-auto_on = False
-rec_on = False
-start_ts = None
-scheduler_id = None
-preview_on = False
-
-# --- Timer logic ---
-def schedule_tick():
-    global scheduler_id
-    if not auto_on: return
-    blue_mark()
-    scheduler_id = root.after(5*60*1000, schedule_tick)
-
-def toggle_timer(arm):
-    global auto_on, start_ts, scheduler_id
-    auto_on = arm
-    if auto_on:
-        start_ts = time.time()
-        schedule_tick()
-        timer_lbl.config(text="00:00")
-    else:
-        if scheduler_id:
-            root.after_cancel(scheduler_id)
-            scheduler_id = None
-        timer_lbl.config(text="00:00")
-
-# --- UI ---
-timer_lbl = tk.Label(root, text="00:00", fg=TIMER_COLOR, bg=BG_COLOR, font=("Roboto Mono",64,"bold"), anchor="center")
+# ── Timer label ────────────────────────────────────────────────
+timer_lbl = tk.Label(root, text="00:00", fg=CLR_COUNTER, bg=CLR_BG, font=FNT_TIME)
 timer_lbl.place(x=0, y=50, width=1280, height=90)
 
-status_lbl = tk.Label(root, text="", fg="#fff", bg=BG_COLOR, font=("Helvetica",18,"bold"))
-status_lbl.place(x=0, y=10, width=1280, height=30)
+def format_status_bar(camera_data=None):
+    """Format comprehensive status bar with all requested information"""
+    try:
+        # Get camera IP
+        cam_ip = "10.98.33.1"
+        
+        # Get video format
+        try:
+            video_format = get_video_format()
+        except:
+            video_format = "N/A"
+        
+        # Get temperature
+        try:
+            temp = get_temperature()
+            temp_str = f"{temp}°C" if temp and temp != "N/A" else "N/A"
+        except:
+            temp_str = "N/A"
+            
+        # Get white balance
+        wb = "N/A"
+        if camera_data and 'white_balance' in camera_data:
+            wb = camera_data['white_balance']
+        
+        # Get ISO
+        iso = "N/A"
+        if camera_data and 'iso' in camera_data:
+            iso = camera_data['iso']
+        
+        # Get battery percentage
+        battery = "N/A"
+        if camera_data and 'battery' in camera_data:
+            battery = f"{camera_data['battery']}%"
+        
+        # Get storage space
+        try:
+            storage_gb = get_storage_gb()
+            storage = f"{storage_gb}GB" if storage_gb else "N/A"
+        except:
+            storage = "N/A"
+        
+        # Check MIDI connection
+        midi_conn = "MIDI ON" if midi_status == "Connected" else "MIDI OFF"
+        
+        # Check WiFi connection to camera
+        try:
+            wifi_conn = "WiFi ON" if check_wifi_connection() else "WiFi OFF"
+        except:
+            wifi_conn = "WiFi OFF"
+        
+        # Format comprehensive status line
+        return f"IP:{cam_ip} • {video_format} • {temp_str} • WB:{wb} • ISO:{iso} • {storage} • {midi_conn} • {wifi_conn}"
+        
+    except Exception as e:
+        return "Status: Error retrieving data"
 
 def update_status():
-    midi = check_midi()
-    cam = check_camera()
-    status_lbl.config(text=f"MIDI: {midi}   |   Camera: {cam}")
-    root.after(2000, update_status)
+    """Update status display every 5 seconds"""
+    try:
+        # Get camera status
+        camera_status = get_camera_status()
+        status_text = format_status_bar(camera_status)
+        status_bar.config(text=status_text)
+        
+    except Exception as e:
+        status_bar.config(text="Status: Connection Error")
+    
+    # Schedule next update
+    root.after(5000, update_status)
 
 def update_clock():
-    if auto_on and start_ts:
-        dt = int(time.time() - start_ts)
-        mm, ss = divmod(dt, 60)
-        timer_lbl.config(text=f"{mm:02}:{ss:02}")
-    root.after(500, update_clock)
-
-# --- Button handlers ---
-def mark_flash():
-    btn_mark.config(bg=MARK_ACTIVE, activebackground=MARK_ACTIVE)
-    root.after(250, lambda: btn_mark.config(bg=MARK_IDLE, activebackground=MARK_ACTIVE))
-
-def rec_flash(color):
-    btn_rec.config(bg=color, activebackground=color)
-    root.after(250, lambda: btn_rec.config(bg=REC_ACTIVE if rec_on else REC_IDLE, activebackground=REC_ACTIVE if rec_on else REC_IDLE))
-
-def mark_cb():
-    purple_mark()
-    mark_flash()
-
-def rec_cb():
-    global rec_on
-    rec_on = not rec_on
-    if rec_on:
-        # Start recording, arm timer
-        print("DEBUG: Attempting to start recording...")
-        ok = rec_toggle(True)
-        if ok:
-            btn_rec.config(bg=REC_ACTIVE, activebackground=REC_ACTIVE)
-            toggle_timer(True)
-            blue_mark() # Immediate blue tick
-            print("DEBUG: Recording started successfully")
-        else:
-            rec_on = False  # Reset state on failure
-            rec_flash(REC_ERROR)
-            print("DEBUG: Failed to start recording")
+    """Update the timer/clock display"""
+    if is_recording and recording_start_time > 0:
+        elapsed = int(time.time() - recording_start_time)
+        minutes = elapsed // 60
+        seconds = elapsed % 60
+        timer_text = f"{minutes:02d}:{seconds:02d}"
+        timer_lbl.config(text=timer_text, fg="#ff4444")
     else:
-        # Stop recording, disarm timer
-        print("DEBUG: Attempting to stop recording...")
-        ok = rec_toggle(False)
-        btn_rec.config(bg=REC_IDLE, activebackground=REC_IDLE)
-        toggle_timer(False)
-        if not ok:
-            rec_flash(REC_ERROR)
-            print("DEBUG: Failed to stop recording")
+        current_time = time.strftime("%H:%M")
+        timer_lbl.config(text=current_time, fg=CLR_COUNTER)
+    
+    root.after(1000, update_clock)
+
+def schedule_auto_mark():
+    """Schedule automatic markers every 5 minutes"""
+    global auto_mark_timer
+    if is_recording:
+        blue_mark()  # Send blue marker for auto marks
+        auto_mark_timer = threading.Timer(300, schedule_auto_mark)  # 5 minutes
+        auto_mark_timer.start()
+
+def rec_toggle_cb():
+    """Toggle recording state with proper button colors"""
+    global is_recording, recording_start_time, auto_mark_timer
+    
+    try:
+        if not is_recording:
+            # Try to start recording
+            start_url = f"http://10.98.33.1/ctrl/rec?action=start"
+            response = requests.get(start_url, timeout=3)
+            if response.status_code == 200:
+                data = response.json()
+                if data.get('code') == 0:
+                    # Start recording successful
+                    is_recording = True
+                    recording_start_time = time.time()
+                    btn_rec.config(bg=CLR_REC_ARM, text="STOP")
+                    schedule_auto_mark()
+                    print("DEBUG: Recording started")
+                else:
+                    btn_rec.config(bg="#ff8800")  # Orange for error
+                    print("DEBUG: Recording start failed")
+            else:
+                btn_rec.config(bg="#ff8800")  # Orange for error
         else:
-            print("DEBUG: Recording stopped successfully")
+            # Try to stop recording
+            stop_url = f"http://10.98.33.1/ctrl/rec?action=stop"
+            response = requests.get(stop_url, timeout=3)
+            if response.status_code == 200:
+                # Stop recording
+                is_recording = False
+                recording_start_time = 0
+                btn_rec.config(bg=CLR_REC_IDLE, text="REC")
+                if auto_mark_timer:
+                    auto_mark_timer.cancel()
+                print("DEBUG: Recording stopped")
+            else:
+                btn_rec.config(bg="#ff8800")  # Orange for error
+    except Exception as e:
+        btn_rec.config(bg="#ff8800")  # Orange for error
+        print(f"Recording error: {e}")
 
-def preview_cb():
-    global preview_on
-    preview_on = not preview_on
-    if preview_on:
-        print("DEBUG: Launching preview...")
-        preview.launch_preview()
-        btn_prev.config(bg=PREV_ACTIVE, activebackground=PREV_ACTIVE)
-        back_btn.place(x=PREV_X, y=BTN_Y+BTN_H+40, width=BTN_W, height=BTN_H)
-    else:
-        print("DEBUG: Killing preview...")
-        preview.kill_all()
-        btn_prev.config(bg=PREV_IDLE, activebackground=PREV_ACTIVE)
-        back_btn.place_forget()
+def preview_toggle():
+    """Launch Z CAM web interface in browser"""
+    try:
+        btn_prev.config(bg=CLR_PREV_ON)
+        launch_preview()  # Launch Z CAM web interface
+        # Reset button color after a moment
+        root.after(2000, lambda: btn_prev.config(bg=CLR_PREV))
+    except Exception as e:
+        print(f"Preview error: {e}")
 
-# --- Create UI Elements ---
-btn_mark = tk.Button(root, text="MARK", bg=MARK_IDLE, fg="#fff", font=("Helvetica",36,"bold"), 
-                     activebackground=MARK_ACTIVE, activeforeground="#fff", command=mark_cb)
-btn_rec  = tk.Button(root, text="REC",  bg=REC_IDLE,  fg="#fff", font=("Helvetica",36,"bold"),
-                     activebackground=REC_IDLE, activeforeground="#fff", command=rec_cb)
-btn_prev = tk.Button(root, text="PREVIEW", bg=PREV_IDLE, fg="#fff", font=("Helvetica",36,"bold"),
-                     activebackground=PREV_ACTIVE, activeforeground="#fff", command=preview_cb)
-exit_btn = tk.Button(root, text="EXIT", bg="#ff6b6b", fg="#fff", font=("Helvetica",28,"bold"), 
-                     activebackground="#ff8a80", activeforeground="#fff", command=root.destroy)
-
+# ── Buttons row ────────────────────────────────────────────────
+btn_mark = tk.Button(root, text="MARK", bg=CLR_MARK, fg=CLR_TEXT,
+                     font=FNT_BTN, activebackground=CLR_MARK,
+                     command=purple_mark)
 btn_mark.place(x=MARK_X, y=BTN_Y, width=BTN_W, height=BTN_H)
-btn_rec.place(x=REC_X, y=BTN_Y, width=BTN_W, height=BTN_H)
-btn_prev.place(x=PREV_X, y=BTN_Y, width=BTN_W, height=BTN_H)
-exit_btn.place(x=REC_X, y=BTN_Y+BTN_H+40, width=BTN_W, height=BTN_H)
 
-back_btn = tk.Button(root, text="BACK", bg="#444", fg="#fff", font=("Helvetica",28,"bold"), 
-                     activebackground="#666", activeforeground="#fff", command=lambda: preview_cb())
-# Initially hidden
-back_btn.place_forget()
+btn_rec = tk.Button(root, text="REC", bg=CLR_REC_IDLE, fg=CLR_TEXT,
+                    font=FNT_BTN, activebackground=CLR_REC_ARM,
+                    command=rec_toggle_cb)
+btn_rec.place(x=REC_X, y=BTN_Y, width=BTN_W, height=BTN_H)
+
+btn_prev = tk.Button(root, text="PREVIEW", bg=CLR_PREV, fg=CLR_TEXT,
+                     font=FNT_BTN, activebackground=CLR_PREV_ON,
+                     command=preview_toggle)
+btn_prev.place(x=PREV_X, y=BTN_Y, width=BTN_W, height=BTN_H)
+
+# ── EXIT button ────────────────────────────────────────────────
+btn_exit = tk.Button(root, text="EXIT", bg="#444", fg=CLR_TEXT,
+                     font=("Helvetica", 24, "bold"), activebackground="#666",
+                     command=lambda: root.destroy())
+btn_exit.place(x=REC_X, y=BTN_Y+BTN_H+20, width=BTN_W, height=60)
 
 # FKeyListener handler
 def handle_fkey(key):
@@ -164,7 +215,7 @@ def handle_fkey(key):
         # Launch the app (no-op if already running)
         pass
     elif key == 'F2':
-        preview_cb()
+        preview_toggle()
     elif key == 'F3':
         root.destroy()
 
