@@ -20,6 +20,12 @@ A professional broadcast control interface for the Seeed reTerminal, designed fo
 - **System Status**: Storage space, MIDI connection, WiFi connectivity
 - **Real-time Updates**: 5-second refresh cycle with graceful error handling
 
+**Professional Clap Sync System** - Visual countdown and audio markers for precise A/V sync:
+- **15-second countdown**: Visual indicator showing time until clap marker
+- **Initial clap marker**: Automatic 800Hz tone + MIDI marker 15 seconds after REC
+- **Manual markers**: 1kHz tone for scratch audio identification
+- **Auto-markers**: 15-minute intervals for long-form content
+
 > **📖 Details:** See [Enhanced Status Bar Documentation](ENHANCED_STATUS_SUMMARY.md) for complete implementation information.
 
 ## 🎯 Features
@@ -28,6 +34,7 @@ A professional broadcast control interface for the Seeed reTerminal, designed fo
 - **Three-button layout**: MARK, REC, PREVIEW optimized for landscape orientation
 - **Fullscreen kiosk mode** with 1280x720 resolution
 - **Real-time timer** with recording synchronization
+- **15-second clap countdown** visual indicator for precise audio sync timing
 - **Enhanced status monitoring**: IP address, video format, temperature, white balance, ISO, storage, MIDI and WiFi connectivity
 - **Live status updates** every 5 seconds with comprehensive camera information
 
@@ -177,16 +184,19 @@ reterminal_slate/
 
 ### Recording Session
 1. **F1** launches the podcast slate interface
-2. **MARK** sends chapter markers during recording
-3. **REC** starts Z CAM recording and timer
-4. **PREVIEW** monitors camera feed in real-time
-5. **F3** quickly closes preview when needed
-6. Timer tracks recording duration with 15-minute auto-markers
+2. **REC** starts Z CAM recording and timer
+3. **15-second countdown** appears showing time until clap marker
+4. **Initial clap marker** automatically triggered 15 seconds after REC (800Hz tone + blue MIDI marker)
+5. **MARK** sends manual chapter markers with 1kHz tone for scratch audio identification
+6. **PREVIEW** monitors camera feed in real-time
+7. **F3** quickly closes preview when needed
+8. **Auto-markers** continue every 15 minutes after the initial clap
 
 ### Post-Production
-- MIDI markers exported to DAW timeline
-- Z CAM recordings automatically timestamped
-- Manual markers distinguish talking points from auto-chapters
+- **Initial clap marker** helps sync audio/video in timeline
+- **Manual markers** (1kHz tone) easily identified in scratch audio for precise editing
+- **Auto-markers** provide regular interval reference points
+- All MIDI markers exported to DAW timeline for professional workflow
 
 ## 🛠️ API Endpoints
 
@@ -210,9 +220,9 @@ GET http://10.98.33.1/ctrl/card?action=query_free # Storage space
 
 ### MIDI Integration
 - **Purple markers**: Manual chapter marks (button press) with MIDI note 60
-- **Blue markers**: Automatic interval marks (15-minute timer) with MIDI note 62  
+- **Blue markers**: Initial clap marker (15 seconds after REC) + automatic interval marks (15-minute timer) with MIDI note 62  
 - **Output format**: MIDI messages to RODECaster Pro for DAW timeline integration
-- **Local feedback**: 50ms 800Hz sine tone on 3.5mm audio jack for user confirmation
+- **Audio feedback**: 1kHz tone for manual markers (scratch audio), 800Hz tone for auto markers
 
 ## 🔍 Troubleshooting
 

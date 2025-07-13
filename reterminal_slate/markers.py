@@ -16,15 +16,15 @@ check_midi()
 
 def purple_mark():
     if out:
-        _send(60, 800)   # NOTE 60, 800 Hz beep
+        _send(60, 1000)   # NOTE 60, 1 kHz beep for manual markers
 
 def blue_mark():
     if out:
-        _send(62, 800)   # NOTE 62, 800 Hz beep
+        _send(62, 800)   # NOTE 62, 800 Hz beep for auto markers
 
 def _send(note, freq):
     out.send(mido.Message('note_on', note=note, velocity=127))
-    # Play 50ms sine tone at 800Hz on 3.5mm jack
+    # Play tone at specified frequency on 3.5mm jack
     subprocess.Popen(
-        ['play','-nq','-t','alsa','synth','0.05','sine','800'],
+        ['play','-nq','-t','alsa','synth','0.05','sine',str(freq)],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

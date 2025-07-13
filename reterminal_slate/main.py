@@ -11,6 +11,8 @@ import requests
 recording_start_time = 0
 is_recording = False
 auto_mark_timer = None
+clap_countdown_start = 0
+clap_countdown_active = False
 
 # Color and font constants matching wireframe
 CLR_BG        = "#222"
@@ -43,6 +45,10 @@ status_bar.place(x=10, y=5, width=1260, height=30)
 # ── Timer label ────────────────────────────────────────────────
 timer_lbl = tk.Label(root, text="00:00", fg=CLR_COUNTER, bg=CLR_BG, font=FNT_TIME)
 timer_lbl.place(x=0, y=50, width=1280, height=90)
+
+# ── Clap countdown label ───────────────────────────────────────
+countdown_lbl = tk.Label(root, text="", fg="#ff6600", bg=CLR_BG, font=("Roboto Mono", 48, "bold"))
+countdown_lbl.place(x=950, y=150, width=300, height=80)
 
 def format_status_bar(camera_data=None):
     """Format comprehensive status bar with all requested information"""
@@ -115,7 +121,9 @@ def update_status():
     root.after(5000, update_status)
 
 def update_clock():
-    """Update the timer/clock display"""
+    """Update the timer/clock display and clap countdown"""
+    global clap_countdown_active
+    
     if is_recording and recording_start_time > 0:
         elapsed = int(time.time() - recording_start_time)
         minutes = elapsed // 60
@@ -125,6 +133,22 @@ def update_clock():
     else:
         current_time = time.strftime("%H:%M")
         timer_lbl.config(text=current_time, fg=CLR_COUNTER)
+    
+    # Handle clap countdown
+    if clap_countdown_active and clap_countdown_start > 0:
+        countdown_elapsed = time.time() - clap_countdown_start
+        countdown_remaining = max(0, 15 - int(countdown_elapsed))
+        
+        if countdown_remaining > 0:
+            countdown_lbl.config(text=f"CLAP IN\n{countdown_remaining}", fg="#ff6600")
+        else:
+            countdown_lbl.config(text="CLAP!", fg="#00ff00")
+            # Hide countdown after 2 seconds
+            if countdown_elapsed > 17:  # 15 seconds + 2 seconds showing "CLAP!"
+                countdown_lbl.config(text="")
+                clap_countdown_active = False
+    else:
+        countdown_lbl.config(text="")
     
     root.after(1000, update_clock)
 
@@ -136,9 +160,18 @@ def schedule_auto_mark():
         auto_mark_timer = threading.Timer(900, schedule_auto_mark)  # 15 minutes
         auto_mark_timer.start()
 
+def schedule_initial_clap():
+    """Schedule initial clap marker 15 seconds after recording starts"""
+    if is_recording:
+        blue_mark()  # Send initial "clap" marker
+        # Schedule first regular auto-marker 15 minutes after this clap
+        global auto_mark_timer
+        auto_mark_timer = threading.Timer(900, schedule_auto_mark)  # 15 minutes from clap
+        auto_mark_timer.start()
+
 def rec_toggle_cb():
     """Toggle recording state with proper button colors"""
-    global is_recording, recording_start_time, auto_mark_timer
+    global is_recording, recording_start_time, auto_mark_timer, clap_countdown_start, clap_countdown_active
     
     try:
         if not is_recording:
@@ -151,9 +184,12 @@ def rec_toggle_cb():
                     # Start recording successful
                     is_recording = True
                     recording_start_time = time.time()
+                    clap_countdown_start = time.time()
+                    clap_countdown_active = True
                     btn_rec.config(bg=CLR_REC_ARM, text="STOP")
-                    schedule_auto_mark()
-                    print("DEBUG: Recording started")
+                    # Schedule initial clap marker after 15 seconds
+                    threading.Timer(15, schedule_initial_clap).start()
+                    print("DEBUG: Recording started - clap marker scheduled for 15 seconds")
                 else:
                     btn_rec.config(bg="#ff8800")  # Orange for error
                     print("DEBUG: Recording start failed")
@@ -167,6 +203,8 @@ def rec_toggle_cb():
                 # Stop recording
                 is_recording = False
                 recording_start_time = 0
+                clap_countdown_active = False
+                countdown_lbl.config(text="")
                 btn_rec.config(bg=CLR_REC_IDLE, text="REC")
                 if auto_mark_timer:
                     auto_mark_timer.cancel()
