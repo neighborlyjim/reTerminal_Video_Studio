@@ -129,11 +129,11 @@ def update_clock():
     root.after(1000, update_clock)
 
 def schedule_auto_mark():
-    """Schedule automatic markers every 5 minutes"""
+    """Schedule automatic markers every 15 minutes"""
     global auto_mark_timer
     if is_recording:
         blue_mark()  # Send blue marker for auto marks
-        auto_mark_timer = threading.Timer(300, schedule_auto_mark)  # 5 minutes
+        auto_mark_timer = threading.Timer(900, schedule_auto_mark)  # 15 minutes
         auto_mark_timer.start()
 
 def rec_toggle_cb():

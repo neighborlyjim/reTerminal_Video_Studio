@@ -181,7 +181,7 @@ reterminal_slate/
 3. **REC** starts Z CAM recording and timer
 4. **PREVIEW** monitors camera feed in real-time
 5. **F3** quickly closes preview when needed
-6. Timer tracks recording duration with 5-minute auto-markers
+6. Timer tracks recording duration with 15-minute auto-markers
 
 ### Post-Production
 - MIDI markers exported to DAW timeline
@@ -209,9 +209,10 @@ GET http://10.98.33.1/ctrl/card?action=query_free # Storage space
 > **📖 See Also:** [Z CAM API Control Reference](zcam_control_reference.md) for complete endpoint documentation.
 
 ### MIDI Integration
-- **Purple markers**: Manual chapter marks (button press)
-- **Blue markers**: Automatic interval marks (5-minute timer)
-- **Output format**: Standard MIDI Time Code (MTC)
+- **Purple markers**: Manual chapter marks (button press) with MIDI note 60
+- **Blue markers**: Automatic interval marks (15-minute timer) with MIDI note 62  
+- **Output format**: MIDI messages to RODECaster Pro for DAW timeline integration
+- **Local feedback**: 50ms 800Hz sine tone on 3.5mm audio jack for user confirmation
 
 ## 🔍 Troubleshooting
 
