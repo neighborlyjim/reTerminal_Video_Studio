@@ -42,9 +42,20 @@ def handle_f2():
     # Add your F2 action here
 
 def handle_f3():
-    """Handle F3 action"""
-    print("F3 (KEY_D) detected!")
-    # Add your F3 action here
+    """Handle F3 action - Kill preview window"""
+    print("F3 (KEY_D) detected - Killing preview!")
+    try:
+        import sys
+        sys.path.append('/home/jharris/reTerminal_Video_Studio/reterminal_slate')
+        import preview
+        preview.kill_all()
+        print("Preview browsers killed successfully")
+    except Exception as e:
+        print(f"Error killing preview: {e}")
+        # Fallback - kill browsers directly
+        import subprocess
+        for browser in ["firefox", "chromium-browser", "netsurf-gtk"]:
+            subprocess.call(["pkill", "-f", browser], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 def handle_green():
     """Handle Green button action"""

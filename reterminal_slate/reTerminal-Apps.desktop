@@ -1,8 +1,0 @@
-[Desktop Entry]
-Name=reTerminal Podcast Slate
-Comment=Podcast slate touchscreen app
-Exec=/home/jharris/reterminal_slate_venv/bin/python /home/jharris/reTerminal_Video_Studio/reterminal_slate/main.py
-Icon=/home/jharris/reTerminal_Video_Studio/reterminal_slate/assets/slate.png
-Terminal=false
-Type=Application
-Categories=AudioVideo;

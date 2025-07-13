@@ -76,6 +76,8 @@ def update_status():
     status_lbl.config(text=f"MIDI: {midi}   |   Camera: {cam}")
     root.after(2000, update_status)
 
+update_status()
+
 def update_clock():
     if auto_on and start_ts:
         dt = int(time.time() - start_ts)
@@ -91,6 +93,10 @@ def mark_flash():
 def rec_flash(color):
     btn_rec.config(bg=color, activebackground=color)
     root.after(250, lambda: btn_rec.config(bg=REC_ACTIVE if rec_on else REC_IDLE, activebackground=REC_ACTIVE if rec_on else REC_IDLE))
+
+def preview_flash():
+    btn_prev.config(bg=PREV_ACTIVE, activebackground=PREV_ACTIVE)
+    root.after(250, lambda: btn_prev.config(bg=PREV_IDLE if not preview_on else PREV_ACTIVE, activebackground=PREV_IDLE if not preview_on else PREV_ACTIVE))
 
 def mark_cb():
     purple_mark()
@@ -158,7 +164,75 @@ back_btn = tk.Button(root, text="BACK", bg="#444", fg="#fff", font=("Helvetica",
 # Initially hidden
 back_btn.place_forget()
 
+def update_clock():
+    if auto_on and start_ts:
+        dt = int(time.time() - start_ts)
+        mm, ss = divmod(dt, 60)
+        timer_lbl.config(text=f"{mm:02}:{ss:02}")
+    root.after(500, update_clock)
+
+# --- Button handlers ---
+def mark_flash():
+    btn_mark.config(bg=MARK_ACTIVE, activebackground=MARK_ACTIVE)
+    root.after(250, lambda: btn_mark.config(bg=MARK_IDLE, activebackground=MARK_ACTIVE))
+
+def rec_flash(color):
+    btn_rec.config(bg=color, activebackground=color)
+    root.after(250, lambda: btn_rec.config(bg=REC_ACTIVE if rec_on else REC_IDLE, activebackground=REC_ACTIVE if rec_on else REC_IDLE))
+
+def preview_flash():
+    btn_prev.config(bg=PREV_ACTIVE, activebackground=PREV_ACTIVE)
+    root.after(250, lambda: btn_prev.config(bg=PREV_IDLE if not preview_on else PREV_ACTIVE, activebackground=PREV_IDLE if not preview_on else PREV_ACTIVE))
+
+def mark_cb():
+    purple_mark()
+    mark_flash()
+
+rec_state = [False]
+def rec_cb():
+    global rec_on
+    rec_on = not rec_on
+    if rec_on:
+        # Start recording, arm timer
+        print("DEBUG: Attempting to start recording...")
+        ok = rec_toggle(True)
+        if ok:
+            btn_rec.config(bg=REC_ACTIVE, activebackground=REC_ACTIVE)
+            toggle_timer(True)
+            blue_mark() # Immediate blue tick
+            print("DEBUG: Recording started successfully")
+        else:
+            rec_on = False  # Reset state on failure
+            rec_flash(REC_ERROR)
+            print("DEBUG: Failed to start recording")
+    else:
+        # Stop recording, disarm timer
+        print("DEBUG: Attempting to stop recording...")
+        ok = rec_toggle(False)
+        btn_rec.config(bg=REC_IDLE, activebackground=REC_IDLE)
+        toggle_timer(False)
+        if not ok:
+            rec_flash(REC_ERROR)
+            print("DEBUG: Failed to stop recording")
+        else:
+            print("DEBUG: Recording stopped successfully")
+
+def preview_cb():
+    global preview_on
+    preview_on = not preview_on
+    if preview_on:
+        print("DEBUG: Launching preview...")
+        preview.launch_preview()
+        btn_prev.config(bg=PREV_ACTIVE, activebackground=PREV_ACTIVE)
+        back_btn.place(x=PREV_X, y=BTN_Y+BTN_H+40, width=BTN_W, height=BTN_H)
+    else:
+        print("DEBUG: Killing preview...")
+        preview.kill_all()
+        btn_prev.config(bg=PREV_IDLE, activebackground=PREV_ACTIVE)
+        back_btn.place_forget()
+
 # FKeyListener handler
+
 def handle_fkey(key):
     if key == 'F1':
         # Launch the app (no-op if already running)
@@ -171,7 +245,6 @@ def handle_fkey(key):
 fkey_listener = FKeyListener(handle_fkey)
 fkey_listener.start()
 
-update_status()
 update_clock()
 root.mainloop()
 

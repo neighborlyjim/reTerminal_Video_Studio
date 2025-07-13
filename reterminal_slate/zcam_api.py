@@ -3,13 +3,19 @@ import socket
 CAM_IP = "10.98.33.1"
 
 def rec_toggle(on):
-    cmd = "start" if on else "stop"
+    action = "start" if on else "stop"
+    url = f"http://{CAM_IP}/ctrl/rec?action={action}"
     try:
-        requests.get(
-            f"http://{CAM_IP}/cgi-bin/zcmd?cmd=record&value={cmd}",
-            timeout=1)
-        return True
+        print(f"DEBUG: Sending request to {url}")
+        response = requests.get(url, timeout=3)
+        print(f"DEBUG: Response status: {response.status_code}")
+        print(f"DEBUG: Response text: {response.text}")
+        return response.status_code == 200
     except requests.Timeout:
+        print("DEBUG: Request timed out")
+        return False
+    except Exception as e:
+        print(f"DEBUG: Request failed: {e}")
         return False
 
 def check_camera():
